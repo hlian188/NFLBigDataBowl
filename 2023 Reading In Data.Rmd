@@ -20,7 +20,7 @@ options(repr.plot.width=15, repr.plot.height = 10)
 ```
 
 ```{r}
-##reading in non-tracking data
+#reading in non-tracking data
 
 #includes schedule info for games
 df_games <- read_csv("games.csv",
@@ -33,17 +33,22 @@ df_plays <- read_csv("plays.csv",
 #includes background info for players
 df_pffScouting <- read_csv("pffScoutingData.csv",
                       col_types = cols())
-```
-```{r}
-df_pffScouting <- read_csv("pffScoutingData.csv",
+
+#outcome of the plays
+df_outcomes <- read_csv("single_play.csv",
                       col_types = cols())
+df_outcomes <- subset(df_outcomes, select = -c(X1))
+
+#combine outcomes and plays
+df_outcomeDescription <- merge( x = df_plays, df_outcomes, by = c("gameId","playId"))
 ```
 
+
 ```{r}
-##Reading tracking data (needs to be done iteratively)
+#Reading tracking data (needs to be done iteratively)
 
 #weeks of NFL season
-weeks <- seq(1) # CURRENTLY ONLY SET TO READ IN WEEK 1
+weeks <- seq(1) # CURRENTLY ONLY READS IN WEEK 1
 
 #blank dataframe to store tracking data
 df_tracking <- data.frame()
@@ -82,7 +87,7 @@ hash.width <- 3.3
 
 ```{r}
 example_play <- df_plays %>%
-                select(gameId, playId, playDescription) %>% slice(2) #SELECTS THE GAME
+                select(gameId, playId, playDescription) %>% filter(gameId == 2021090900, playId == 97) #SELECTS THE GAME AND PLAY
 
 
 #merging games data to play
@@ -99,8 +104,8 @@ example_play <- inner_join(example_play,
 
 
 ```{r}
-#colors used for plot - using colors of team
-cols_fill <- c("#FB4F14", "#663300", "#A5ACAF")
+#colors used for plot
+cols_fill <- c("#fc0303", "#663300", "#0519f7")
 cols_col <- c("#000000", "#663300", "#000000")
 
 plot_title <- str_trim(gsub("\\s*\\([^\\)]+\\)","",as.character(example_play$playDescription[1])))
@@ -113,7 +118,9 @@ ymax <- min(round(max(example_play$x, na.rm = TRUE) + 10, -1), 120)
 df.hash <- expand.grid(x = c(0, 23.36667, 29.96667, xmax), y = (10:110))
 df.hash <- df.hash %>% filter(!(floor(y %% 5) == 0))
 df.hash <- df.hash %>% filter(y < ymax, y > ymin)
+```
 
+```{r}
 
 #plotting
 ggplot() +
@@ -157,7 +164,7 @@ geom_point(data = example_play, aes(x = (xmax-y),
                                   fill = team,
                                   group = nflId,
                                   size = team,
-                                  colour = team), 
+                                  color = team), 
          alpha = 0.7) +  
 
 #adding jersey numbers
