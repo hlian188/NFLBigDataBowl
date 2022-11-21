@@ -5,13 +5,12 @@ output: html_notebook
 
 ```{r}
 #Loading pre-installed libraries
+
 suppressMessages(suppressWarnings(library(tidyverse)))
 suppressMessages(suppressWarnings(library(gganimate)))
 suppressMessages(suppressWarnings(library(cowplot)))
 suppressMessages(suppressWarnings(library(repr)))
-suppressMessages(suppressWarnings(library(gifski)))
-
-
+suppressMessages(suppressWarnings(library(gifski))) # doesn't make png
 
 #turning off warnings
 options(warn=-1)
