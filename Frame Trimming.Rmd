@@ -10,8 +10,6 @@ suppressMessages(suppressWarnings(library(tidyverse)))
 df_pffScouting <- read_csv("pffScoutingData.csv",
                       col_types = cols())
 
-#Reading tracking data (needs to be done iteratively)
-
 #weeks of NFL season
 weeks <- seq(1) # CURRENTLY ONLY READS IN WEEK 1
 
