@@ -1,0 +1,424 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+library(GGally)
+setwd("/Users/jingchunquan/desktop/Big_Data_Bowl/nfl-big-data-bowl-2023")
+```
+
+
+# shoelace area stuff
+```{r}
+shoelace_area <- function(x_list, y_list){
+  a1 = 0
+  a2 = 0
+  append(x_list, x_list[0])
+  append(y_list, y_list[0])
+  
+  for (j in range(length(x_list)-1)){
+    a1 = a1 + x_list[j]*y_list[j+1]
+    a2 = a2 + y_list[j]*x_list[j+1]
+  }
+  l = abs(a1-a2)/2
+  return(l)
+}
+
+x<-c(786.0,712.3,717.7,804.9,866.1,877.5,866.0,823.2,765.5,791.8,830.3,846.9,937.1,941.1,983.2,1020.5,997.1,996.9,921.5,921.2,850.6,850.6,786.0)
+
+y<-c(139.8,245.3,291.7,335.6,352.7,402.4,492.9,560.1,603.6,631.7,617.8,618.1,538.5,476.4,443.0,338.4,232.7,232.7,145.0,145.0,121.0,120.7,139.8)
+
+shoelace_area(x,y)
+
+
+x <- c(0, 0, 2, 2)
+y <- c(0, 2, 0, 2)
+shoelace_area(x,y)
+
+```
+
+
+
+# combining outcome variables
+```{r}
+plays = read.csv("plays.csv")
+pff = read.csv("pffScoutingData.csv")
+force = read.csv("week1_merged.csv")
+tracking = read.csv("week1.csv")
+
+force_rush = force %>%
+        filter(pff_role == "Pass Rush")
+force_block = force %>%
+        filter(pff_role == "Pass Block")
+
+# offense
+d = pff %>%
+  filter(pff_role == "Pass Rush")
+
+unique(d$pff_positionLinedUp)
+
+pff2 = pff %>% 
+  group_by(playId) %>% 
+  summarize(gameId = max(gameId, na.rm = TRUE),
+            hit = max(pff_hit, na.rm = TRUE), 
+            hurry = max(pff_hurry, na.rm = TRUE), 
+            sack = max(pff_sack,na.rm = TRUE))
+
+pff2$bad_thing = pmax(pff2$hit, pff2$hurry, pff2$sack)
+
+write.csv(pff2,'single_play.csv')
+```
+
+
+
+```{r}
+all = merge(plays, pff2, by = "playId")
+
+names(all)
+ggpairs(all[,c("yardsToGo", "yardlineNumber",  "absoluteYardlineNumber", "defendersInBox", "pff_passCoverageType","bad_thing")])
+
+all$bad_thing = factor(all$bad_thing)
+
+ggplot(all, aes(x = bad_thing, y = defendersInBox)) + 
+  geom_violin(alpha = 0.5)
+```
+
+
+
+# flipping field
+```{r}
+tracking2 <- tracking %>%
+  mutate(x = ifelse(playDirection == "left", 120-x, x),
+         y = ifelse(playDirection == "left", 160/3 - y, y))
+
+linemen = merge(tracking2, pff, by = c("playId", "nflId"))
+linemen2 = linemen[,c("playId","frameId", "nflId",  "gameId.x", "time", "x", "y", "s", "a", "dis", "o", "dir", "pff_role", "pff_positionLinedUp")]
+```
+
+
+# counting # linemen and seeing if it's consistent
+```{r}
+verify = linemen2 %>%
+  filter(playId == 97) %>%
+  group_by(frameId) %>%
+  count(pff_role) 
+
+verify2 = pff %>%
+  group_by(gameId, playId) %>%
+  count(pff_role) 
+```
+
+
+```{r}
+df4 = linemen2 %>%
+  filter(pff_role == "Pass Rush") %>%
+  group_by(gameId.x, playId, frameId) %>%
+  mutate(middleX = mean(x),
+         middleY = mean(y),
+         dist = ((middleX - x)**2 + (middleY - y)**2)**0.5) %>%
+  summarise(avg_dist = mean(dist), nflId = nflId)
+
+yo = linemen2 %>%
+  mutate(qb_x = ifelse(pff_positionLinedUp == "QB", x, 0),
+         qb_y = ifelse(pff_positionLinedUp == "QB", y, 0))
+  
+yoo = yo %>% 
+  group_by(frameId) %>% 
+  summarize(qb_x = max(qb_x, na.rm = TRUE),
+            qb_y = max(qb_y, na.rm = TRUE)) %>%
+  ungroup()
+
+
+hello4B = merge(linemen2, yoo, by = c("frameId"))
+
+df4_final = hello4B %>%
+  filter(pff_role == "Pass Rush") %>%
+  group_by(gameId.x, playId, frameId) %>%
+  mutate(dist = ((qb_x - x)**2 + (qb_y - y)**2)**0.5) %>%
+  summarise(avg_dist_to_qb = mean(dist), nflId = nflId)
+
+
+df4_final_2 = hello4B %>%
+  filter(pff_role == "Pass Rush") %>%
+  group_by(gameId.x, playId, frameId) %>%
+  summarise(area = shoelace_area(x,y), nflId = nflId)
+
+
+final0 = merge(df4, df4_final, by = c("gameId.x", "playId","frameId", "nflId"))
+final = merge(final0, df4_final_2, by = c("gameId.x", "playId","frameId", "nflId"))
+
+colnames(final)[1] = "gameId"
+
+final_w_force = merge(final, force, by = c("gameId", "playId","frameId", "nflId"))
+
+write.csv(final_w_force,'final_w_force.csv')
+
+
+cor(final$avg_dist, final$avg_dist_to_qb)
+
+df5 = final %>%
+  group_by(gameId, playId) %>%
+  summarize(avg_linemen_dist = mean(avg_dist, na.rm = TRUE),
+            avg_qb_dist = mean(avg_dist_to_qb, na.rm = TRUE),
+            avg_area = mean(area, na.rm = TRUE))
+
+colnames(all)[2] = "gameId"
+hello = merge(df5, all, by = c("playId", "gameId"))
+
+write.csv(hello,'dists_area.csv')
+
+features = hello[,c("playId","frameId",  "gameId.x", "bad_thing", "avg_dist", "avg_dist_to_qb", "area")]
+
+```
+
+
+
+```{r}
+
+#####
+'library(lubridate)
+typeof(hello$gameClock)
+as.POSIXlt("15:00", format='%M:%S')
+
+hello$gameClock =as.POSIXlt(hello$gameClock, format='%M:%S')
+
+mod1 = glm(as.numeric(bad_thing) ~ avg_linemen_dist + avg_qb_dist + avg_area, data = hello)
+summary(mod1)
+
+plot(as.numeric(bad_thing) ~ avg_linemen_dist, data = hello)
+
+ggplot(hello, aes(x = bad_thing, y = avg_area, fill = avg_area)) + 
+  geom_violin(alpha = 0.5)
+
+
+ggplot(hello, aes(x = bad_thing, y = area)) + 
+  geom_violin(alpha = 0.5) + 
+  geom_boxplot(width = 0.5, alpha = 0.5)
+
+
+unique(pff$pff_positionLinedUp)'
+
+```
+
+
+# individual per player
+```{r}
+df4 = linemen2 %>%
+  filter(pff_role == "Pass Rush") %>%
+  group_by(gameId.x, playId, frameId) %>%
+  mutate(middleX = mean(x),
+         middleY = mean(y),
+         dist = ((middleX - x)**2 + (middleY - y)**2)**0.5, nflId = nflId)
+
+```
+
+```{r}
+yo = linemen2 %>%
+  mutate(qb_x = ifelse(pff_positionLinedUp == "QB", x, 0),
+         qb_y = ifelse(pff_positionLinedUp == "QB", y, 0))
+
+yoo = yo %>% 
+  group_by(gameId.x, playId, frameId) %>% 
+  summarize(qb_x = max(qb_x, na.rm = TRUE),
+            qb_y = max(qb_y, na.rm = TRUE)) %>%
+  ungroup()
+
+
+```
+
+
+```{r}
+hello4B = merge(linemen2, yoo, by = c("gameId.x", "playId", "frameId"))
+
+df4_final = hello4B %>%
+  filter(pff_role == "Pass Rush") %>%
+  group_by(gameId.x, playId, frameId) %>%
+  mutate(dist_to_qb = ((qb_x - x)**2 + (qb_y - y)**2)**0.5, nflId = nflId)
+
+
+df4_final_2 = hello4B %>%
+  filter(pff_role == "Pass Rush") %>%
+  group_by(gameId.x, playId, frameId) %>%
+  summarise(area = shoelace_area(x,y), nflId = nflId)
+
+
+final0 = merge(df4, df4_final, by = c("gameId.x", "playId","frameId", "nflId"))
+final = merge(final0, df4_final_2, by = c("gameId.x", "playId","frameId", "nflId"))
+
+colnames(final)[1] = "gameId"
+
+final_w_force = merge(final, force_rush, by = c("gameId", "playId","frameId", "nflId"))
+
+final_w_force = final_w_force[,c("gameId","playId","frameId", "nflId",  "x.x", "y.x", "dist", "dist_to_qb", "area", "dir", "force", "x_force", "y_force", "pff_role")]
+
+
+#pairs(final_w_force[,c("dist", "dist_to_qb",  "area", "x_force", "y_force")])
+
+
+mean(final_w_force$dist)
+mean(final_w_force$dist_to_qb)
+sd(final_w_force$dist)
+sd(final_w_force$dist_to_qb)
+```
+
+
+```{r}
+write.csv(final_w_force,'combined_per_player_rush.csv')
+
+```
+
+```{r}
+averaged = final_w_force %>%
+  group_by(gameId, playId) %>%
+  summarize(dist = mean(dist),
+            dist_to_qb = mean(dist_to_qb),
+            area = mean(area),
+            x_force = mean(x_force),
+            y_force = mean(y_force))
+
+all = merge(averaged, pff2, by = c("playId"))
+```
+
+
+```{r}
+mod1 = glm(as.numeric(bad_thing) ~ dist + area + x_force*y_force + dist_to_qb, data = all)
+summary(mod1)
+```
+
+```{r}
+final_w_force$p = predict(mod1, final_w_force, type="response")
+
+over_time = final_w_force %>%
+  group_by(frameId) %>%
+  summarize(prob = mean(p))
+
+plot(over_time$prob, 
+     xlab = "frameId",
+     ylab = "probability of hit/hurry/sack",
+     main = "Probability of Negative Outcome over Time")
+```
+```{r}
+unclean = read.csv("week1_cut_by_frame.csv")
+clean = read.csv("week1_cut_by_frame_clean.csv")
+```
+
+```{r}
+final_w_force$p = predict(mod1, clean, type="response")
+
+over_time = final_w_force %>%
+  group_by(frameId) %>%
+  summarize(prob = mean(p))
+
+plot(over_time$prob)
+```
+
+
+###############
+WEIGHTING FORCES
+###############
+
+
+```{r}
+#final_w_force$weighted_force_x = final_w_force$x_force*final_w_force$dist_to_qb
+#final_w_force$weighted_force_y = final_w_force$y_force*final_w_force$dist_to_qb
+
+
+final_w_force$inv_dist = 1/final_w_force$dist_to_qb
+
+final_w_force$count = 1
+
+#final_w_force <- final_w_force[is.finite((final_w_force$inv_w_force_x)),]
+#final_w_force <- final_w_force[is.finite((final_w_force$inv_w_force_y)),]
+```
+
+
+```{r}
+weighted_forces = final_w_force %>%
+  group_by(gameId, playId, frameId) %>%
+  mutate(sum_inverse = sum(inv_dist),
+         tot_players = sum(count))
+
+weighted_forces
+#final_w_weighted_force = merge(final_w_force, sum_weighted_forces, by = c("gameId", "playId", "frameId"))
+
+weighted_forces[,-c("x.x", "dir",  "force", "inv_dist", "count", "sum_inverse", "tot_players")]
+
+```
+
+```{r}
+weighted_forces$norm_weighted_x =  weighted_forces$x_force*(weighted_forces$inv_dist/weighted_forces$sum_inverse)*weighted_forces$tot_players
+weighted_forces$norm_weighted_y =  weighted_forces$y_force*(weighted_forces$inv_dist/weighted_forces$sum_inverse)*weighted_forces$tot_players
+
+weighted_forces[,c("gameId", "playId",  "frameId", "nflId", "area", "dist", "dist_to_qb", "x_force", "y_force", "norm_weighted_x", "norm_weighted_y")]
+```
+
+```{r}
+cor(weighted_forces$norm_weighted_x, weighted_forces$x_force)
+cor(weighted_forces$norm_weighted_y, weighted_forces$y_force)
+
+#plot(weighted_forces$norm_weighted_x, weighted_forces$x_force)
+#plot(weighted_forces$norm_weighted_y, weighted_forces$y_force)
+```
+```{r}
+write.csv(weighted_forces,'weighted_forces.csv')
+```
+
+
+
+```{r}
+cor(weighted_forces$norm_weighted_x, weighted_forces$dist_to_qb)
+cor(weighted_forces$norm_weighted_y, weighted_forces$dist_to_qb)
+
+
+
+```
+
+
+```{r}
+averaged = weighted_forces %>%
+  group_by(gameId, playId) %>%
+
+  summarize(time = frameId,
+            dist = mean(dist),
+            dist_to_qb = mean(dist_to_qb),
+            area = mean(area),
+            x_force = mean(x_force),
+            y_force = mean(y_force),
+            x_w_force = mean(norm_weighted_x),
+            y_w_force = mean(norm_weighted_y))
+
+all = merge(averaged, pff2, by = c("playId"))
+```
+
+
+```{r}
+mod2 = glm(as.numeric(bad_thing) ~ dist + area + x_force*y_force + dist_to_qb + x_w_force*y_w_force, data = all)
+summary(mod2)
+```
+
+```{r}
+
+final_w_force$p = predict(mod1, final_w_force, type="response")
+
+over_time = final_w_force %>%
+  group_by(frameId) %>%
+  summarize(prob = mean(p))
+
+plot(over_time$prob, 
+     xlab = "frameId",
+     ylab = "probability of hit/hurry/sack")
+```
+
+```{r}
+library(rpart)
+library(rpart.plot)
+all
+
+tree = rpart((bad_thing) ~ dist + area + dist_to_qb + x_w_force + y_w_force + time, data = all)
+
+rpart.plot(tree)
+```
+
+
