@@ -1,0 +1,43 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+```{r}
+suppressMessages(suppressWarnings(library(tidyverse)))
+```
+
+```{r}
+df_offense_force <- suppressMessages((read_csv("week1_offense_force.csv",
+                      col_types = cols())))
+
+df_x_offense_force <- df_offense_force %>% 
+  select(c(gameId, playId, nflId, frameId, x_force)) %>% 
+  group_by(gameId, playId) %>% 
+  mutate(maxnum = max(x_force), minnum = min(x_force)) %>% 
+  mutate(normforce = ((x_force - minnum)/(maxnum - minnum))*10)
+
+test_off <- df_x_offense_force %>% filter(gameId == 2021090900, playId == 97) %>% filter(frameId == 1) %>% select(-c(x_force, maxnum, minnum))
+```
+
+```{r}
+df_defense_force <- suppressMessages((read_csv("week1_defense_force.csv",
+                      col_types = cols())))
+
+df_x_defense_force <- df_defense_force %>% 
+  select(c(gameId, playId, nflId, frameId, x_force)) %>% 
+  group_by(gameId, playId) %>% 
+  mutate(maxnum = max(x_force), minnum = min(x_force)) %>% 
+  mutate(normforce = ((x_force - minnum)/(maxnum - minnum))*5)
+
+
+test_def <- df_x_defense_force %>% filter(gameId == 2021090900, playId == 97) %>% filter(frameId == 15)
+```
+
+```{r}
+
+the_game = 2021090900 #SELECTS THE GAME AND PLAY
+the_play = 97
+test <- rbind(df_x_defense_force,df_x_offense_force) %>% filter(gameId == 2021090900, playId == 97) %>% 
+        filter(frameId == 1)
+```
+
