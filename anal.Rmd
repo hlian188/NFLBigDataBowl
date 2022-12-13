@@ -1,0 +1,307 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+setwd("/Users/jingchunquan/desktop/Big_Data_Bowl/nfl-big-data-bowl-2023")
+
+week1 = read_csv("features_all_1.csv")
+week2 = read_csv("features_all_2.csv")
+week3 = read_csv("features_all_3.csv")
+week4 = read_csv("features_all_4.csv")
+week5 = read_csv("features_all_5.csv")
+week6 = read_csv("features_all_6.csv")
+week7 = read_csv("features_all_7.csv")
+week8 = read_csv("features_all_8.csv")
+
+week1$week = 1
+week2$week = 2
+week3$week = 3
+week4$week = 4
+week5$week = 5
+week6$week = 6
+week7$week = 7
+week8$week = 8
+
+all2 = rbind(week1, week2, week3, week4, week5, week6, week7, week8)
+all2
+
+```
+
+```{r}
+all2[is.na(all2)] = 0
+all2
+all2_na_rem <- all2[complete.cases(all2),]
+all2_na_rem
+```
+
+
+```{r}
+write.csv(all2, "features_all_weeks.csv")
+```
+
+
+
+```{r}
+all = all2 %>%
+  dplyr::select(-c(X1, playId, gameId, hit, hurry, sack))
+all
+#write.csv(all, "all_features_all_weeks.csv")
+```
+
+```{r}
+all <- all[complete.cases(all),]
+
+quant = all %>%
+  scale(center = FALSE, scale = apply(., 2, sd, na.rm = TRUE))
+
+
+pca = prcomp(quant, center = TRUE, scale. = TRUE)
+summary(pca)
+```
+
+```{r}
+library(factoextra)
+fviz_eig(pca, addlabels = TRUE) + 
+  geom_hline(yintercept = 100 * (1/ncol(quant)), 
+             linetype = "dashed", color = "darkviolet")
+```
+
+
+
+
+```{r}
+all$frame = ifelse(all$frameId >= 25, "50+", "frame")
+all$frame = ifelse(all$frameId < 25, "<25", all$frame)
+
+fviz_pca_biplot(pca, label = "var",
+                alpha.ind = 0,
+                alpha.var = 0.75,
+                repel = TRUE,
+                habillage = all$bad_thing, pointshape = 19)
+```
+
+
+```{r}
+mod = lm(bad_thing ~ . -hit - hurry - sack - playId - gameId, data = all2)
+summary(mod)
+
+all2$p = predict(mod, all2, type="response")
+
+  
+over_time = all2 %>%
+  group_by(frameId) %>%
+  summarize(prob = mean(p, na.rm=TRUE))
+
+over_time = filter(over_time, frameId < 200)
+
+plot(over_time$prob, 
+     xlab = "frameId",
+     ylab = "probability of hit/hurry/sack")
+
+abline(v = 60, col = "blue")
+
+```
+
+
+```{r}
+all2$bad_pred = ifelse(all2$p > 0.5, 1, 0)
+all2$correct = ifelse(all2$bad_pred == all2$bad_thing, 1, 0)
+
+1-sum(abs(all2$bad_pred - all2$bad_thing))/nrow(all2)
+
+cor = all2 %>%
+  filter(correct == 1) 
+
+wrong = all2 %>%
+  filter(correct == 0) 
+
+
+barplot(table(cor$frameId))
+barplot(table(wrong$frameId))
+
+group_all = all2 %>%
+  group_by(frameId) %>%
+  mutate(accuracy = 1-sum(abs(bad_pred - bad_thing))/n())
+
+```
+```{r}
+plot(group_all$frameId, group_all$accuracy)
+```
+
+
+```{r}
+p = ecdf(all2$frameId)
+#plot CDF
+plot(p, xlab='frameId', ylab='CDF', main='CDF of Frames') 
+abline(v = 60, col = "blue")
+
+p = ecdf(all2$p)
+#plot CDF
+plot(p, xlab='frameId', ylab='CDF', main='CDF of Frames') 
+```
+
+```{r}
+all2$norm_weighted_x_net = all2$norm_weighted_x_rush - all2$norm_weighted_x_block
+all2$area_net = all2$area_rush - all2$area_block
+all2$dist_net = all2$dist_rush - all2$dist_block
+all2$dist_to_qb_net = all2$dist_to_qb_rush - all2$dist_to_qb_block
+
+all2
+```
+
+```{r}
+library(rpart)
+library(rpart.plot)
+
+model3 = rpart(bad_thing ~ frameId + norm_weighted_x_net + area_net + dist_net + dist_to_qb_net, data = all2)
+all2$p3 <- predict(model3, newdata = all2)
+
+all2$bad_pred_p3 = ifelse(all2$p3 > 0.5, 1, 0)
+sum(abs(all2$bad_pred_p3 - all2$bad_thing))/nrow(all2)
+```
+
+```{r}
+all2
+```
+
+
+
+```{r}
+library(rpart)
+library(rpart.plot)
+
+ans = matrix(nrow = 3, ncol = 8)
+rownames(ans) = c('GLM1', 'GLM2', 'Tree')
+
+
+for (k in 1:8){
+  testd <- all2 %>% filter(week == k)
+  traind <- all2 %>% filter(week != k)
+  
+  model1 = glm(bad_thing ~ frameId + norm_weighted_x_net + area_net + dist_net + dist_to_qb_net + 
+                 net_x_force_bottom + net_y_force_bottom + net_x_force_top + net_y_force_top + 
+                 net_x_force_middle + net_y_force_middle , family = "binomial", data = traind)
+  
+  model2 = glm(bad_thing ~ frameId + area_block + dist_block + dist_to_qb_net + x_force_block + y_force_block + norm_weighted_x_block + norm_weighted_y_block + area_rush + dist_rush + dist_to_qb_rush + x_force_rush + y_force_rush + norm_weighted_x_rush + norm_weighted_y_rush, family = "binomial", data = traind)
+  
+  model3 = rpart(bad_thing ~ frameId + norm_weighted_x_net + area_net + dist_net + dist_to_qb_net +
+                   net_x_force_bottom + net_y_force_bottom + net_x_force_top + net_y_force_top + 
+                 net_x_force_middle + net_y_force_middle, data = traind)
+  
+
+  
+  testd$p1 <- predict(model1, newdata = testd, type="response")
+  testd$p2 <- predict(model2, newdata = testd, type="response")
+  testd$p3 <- predict(model3, newdata = testd)
+  
+  testd$bad_pred_p1 = ifelse(testd$p1 > 0.5, 1, 0)
+  testd$bad_pred_p2 = ifelse(testd$p2 > 0.5, 1, 0)
+  testd$bad_pred_p3 = ifelse(testd$p3 > 0.5, 1, 0)
+  
+  ans[1,k] = 1-sum(abs(testd$bad_pred_p1 - testd$bad_thing))/nrow(testd)
+  ans[2,k] = 1-sum(abs(testd$bad_pred_p2 - testd$bad_thing))/nrow(testd)
+  ans[3,k] = 1-sum(abs(testd$bad_pred_p3 - testd$bad_thing))/nrow(testd)
+}
+
+ans
+mat2 = matrix(nrow = 3, ncol = 2)
+rownames(mat2) = c('GLM1', 'GLM2', 'Tree')
+colnames(mat2) = c('accuracy', 'standard errors')
+
+mat2[1,1] = mean(ans[1,])
+mat2[2,1] = mean(ans[2,])
+mat2[3,1] = mean(ans[3,])
+
+mat2[1,2] = sd(ans[1,])/8**0.5
+mat2[2,2] = sd(ans[2,])/8**0.5
+mat2[3,2] = sd(ans[3,])/8**0.5
+
+mat2
+```
+
+ranger package --> random forests
+
+```{r}
+table(all2$bad_thing)
+```
+
+
+```{r}
+all = all2 %>%
+  dplyr::select(c(frameId, norm_weighted_x_net, area_net, dist_net, dist_to_qb_net))
+
+all <- all[complete.cases(all),]
+
+quant = all %>%
+  scale(center = FALSE, scale = apply(., 2, sd, na.rm = TRUE))
+
+
+pca = prcomp(quant, center = TRUE, scale. = TRUE)
+summary(pca)
+
+fviz_eig(pca, addlabels = TRUE) + 
+  geom_hline(yintercept = 100 * (1/ncol(quant)), 
+             linetype = "dashed", color = "darkviolet")
+
+```
+
+
+```{r}
+all$frame = ifelse(all$frameId >= 40, "40+", "frame")
+all$frame = ifelse(all$frameId < 30, "20-30", all$frame)
+all$frame = ifelse(all$frameId < 20, "10-20", all$frame)
+all$frame = ifelse(all$frameId < 10, "<10", all$frame)
+
+fviz_pca_biplot(pca, label = "var",
+                alpha.ind = 0.25,
+                alpha.var = 0.75,
+                repel = TRUE,
+                habillage = all$frame, pointshape = 19)
+```
+
+
+
+```{r}
+library(xgboost)
+
+# get the numb 70/30 training test split
+numberOfTrainingSamples <- round(nrow(all2) * .7)
+
+data = all2 %>%
+  dplyr::select(c(frameId, norm_weighted_x_net, area_net, dist_net, dist_to_qb_net))
+
+data = all2 %>%
+  dplyr::select(c(frameId, area_block, dist_block, dist_to_qb_net, x_force_block, y_force_block, norm_weighted_x_block, norm_weighted_y_block, area_rush, dist_rush, dist_to_qb_rush, x_force_rush, y_force_rush, norm_weighted_x_rush, norm_weighted_y_rush, net_x_force_bottom, net_y_force_bottom, net_x_force_top, net_y_force_top,
+                 net_x_force_middle, net_y_force_middle))
+
+labels = all2$bad_thing
+
+# training data
+train_data <- data[1:numberOfTrainingSamples,]
+train_labels <- labels[1:numberOfTrainingSamples]
+
+# testing data
+test_data <- data[-(1:numberOfTrainingSamples),]
+test_labels <- labels[-(1:numberOfTrainingSamples)]
+
+# put our testing & training data into two seperates Dmatrixs objects
+dtrain <- xgb.DMatrix(data = as.matrix(train_data), label= train_labels)
+dtest <- xgb.DMatrix(data = as.matrix(test_data), label= test_labels)
+
+# train an xgboost model
+model_tuned <- xgboost(data = dtrain, # the data           
+                 max.depth = 5, # the maximum depth of each decision tree
+                 nround = 15, # max number of boosting iterations
+                 objective = "binary:logistic") # the objective function 
+
+# generate predictions for our held-out testing data
+pred <- predict(model_tuned, dtest)
+
+# get & print the classification error
+err <- mean(as.numeric(pred > 0.5) != test_labels)
+print(paste("test-error=", err))
+```
+
