@@ -7,6 +7,34 @@ output: html_notebook
 library(tidyverse)
 library(GGally)
 setwd("/Users/jingchunquan/desktop/Big_Data_Bowl/nfl-big-data-bowl-2023")
+
+```
+
+
+
+# combining outcome variables
+```{r}
+plays = read.csv("plays.csv")
+pff = read.csv("pffScoutingData.csv")
+
+
+tracking = read.csv("week8_cut_by_frame_clean.csv")
+force = read.csv("raw_forces_week8.csv")
+partitioned = read.csv("partitioned_forces8.csv")
+
+force_rush = force %>%
+        filter(pff_role == "Pass Rush")
+force_block = force %>%
+        filter(pff_role == "Pass Block")
+
+pff2 = pff %>% 
+  group_by(gameId, playId) %>% 
+  summarize(gameId = max(gameId, na.rm = TRUE),
+            hit = max(pff_hit, na.rm = TRUE), 
+            hurry = max(pff_hurry, na.rm = TRUE), 
+            sack = max(pff_sack,na.rm = TRUE))
+
+pff2$bad_thing = pmax(pff2$hit, pff2$hurry, pff2$sack)
 ```
 
 
@@ -27,30 +55,6 @@ shoelace_area <- function(x_list, y_list){
 }
 ```
 
-
-
-# combining outcome variables
-```{r}
-plays = read.csv("plays.csv")
-pff = read.csv("pffScoutingData.csv")
-force = read.csv("week1_merged.csv")
-tracking = read.csv("week1_cut_by_frame_clean.csv")
-partitioned = read.csv("partitioned_forces.csv")
-
-force_rush = force %>%
-        filter(pff_role == "Pass Rush")
-force_block = force %>%
-        filter(pff_role == "Pass Block")
-
-pff2 = pff %>% 
-  group_by(gameId, playId) %>% 
-  summarize(gameId = max(gameId, na.rm = TRUE),
-            hit = max(pff_hit, na.rm = TRUE), 
-            hurry = max(pff_hurry, na.rm = TRUE), 
-            sack = max(pff_sack,na.rm = TRUE))
-
-pff2$bad_thing = pmax(pff2$hit, pff2$hurry, pff2$sack)
-```
 
 
 # flipping field
@@ -229,6 +233,10 @@ features_all3
 ```
 
 ```{r}
-write.csv(features_all3,'features_all.csv')
+
+write.csv(features_all3,'features_all_8.csv')
 ```
+
+
+
 
