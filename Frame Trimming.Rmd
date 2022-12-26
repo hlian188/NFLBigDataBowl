@@ -1,0 +1,73 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+```{r}
+suppressMessages(suppressWarnings(library(tidyverse)))
+```
+
+```{r}
+# reading in pff
+df_pffScouting <- read_csv("pffScoutingData.csv",
+                      col_types = cols())
+```
+
+
+```{r}
+# reading and trimming of tracking data
+
+weeks <- seq(1:2)
+for(w in weeks){
+    
+  # reading in the week  
+  df_tracking <- read_csv(paste0("week",w,".csv"),
+                                col_types = cols())
+  
+  # flipping the positional values
+  df_tracking <- df_tracking %>%
+  mutate(x = ifelse(playDirection == "left", 120 - x, x),
+         y = ifelse(playDirection == "left", 160 / 3 - y, y))
+  df_tracking <- df_tracking %>%
+  mutate(dir = ifelse(playDirection == "left", dir + 180, dir),
+         dir = ifelse(dir > 360, dir - 360, dir),
+         o = ifelse(playDirection == "left", o + 180, o),
+         o = ifelse(o > 360, o - 360, o))
+  
+  # identifies the frame with the starting and ending event
+  passer_tracking_data <- df_tracking %>%
+  mutate(is_start = as.numeric(event %in% c("autoevent_ballsnap", "ball_snap")),
+         is_end = as.numeric(event %in% c("fumble", "handoff", "lateral",
+                                          "autoevent_passforward", "pass_forward",
+                                          "qb_sack", "qb_strip_sack", "run")))
+
+  # summarizes each play by starting and ending frame ID
+  frame_seq_info <- passer_tracking_data %>% group_by(gameId, playId) %>%
+  mutate(any_start = any(is_start == 1), any_end = any(is_end == 1)) %>%
+  filter(any_start, any_end) %>%
+  summarize(start_frame = frameId[which(is_start == 1)[1]],
+            end_frame = frameId[which(is_end == 1 & frameId > start_frame)[1]], 
+            .groups = "drop")
+  
+  # finds the starting and ending frame id for tracking data
+  passer_tracking_seq_data <- passer_tracking_data %>%
+  left_join(frame_seq_info, by = c("gameId", "playId")) %>%
+  filter(!is.na(start_frame), !is.na(end_frame),
+         frameId >= start_frame, frameId <= end_frame)
+  
+  # creating new frame id
+  passer_tracking_seq_data <- passer_tracking_seq_data %>%
+  mutate(new_frameId = frameId - start_frame + 1)
+
+  # dropping the extra rows
+  cut_by_frame_clean <- passer_tracking_seq_data %>% 
+  select(-c("is_start", "is_end", "start_frame", "end_frame", "frameId"))
+
+  # renaming the column
+  colnames(cut_by_frame_clean)[colnames(cut_by_frame_clean) == "new_frameId"] = "frameId"
+
+  # creates the csv
+  write.csv(cut_by_frame_clean, paste0("week",w,"_cut_by_frame_clean.csv"), 
+            row.names = FALSE)
+
+  }
+```
