@@ -1,0 +1,70 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+```{r}
+suppressMessages(suppressWarnings(library(tidyverse)))
+```
+
+
+```{r}
+# reading in data
+
+# player
+df_players <- read_csv("Data/players.csv",
+                    col_types = cols())
+
+# pff
+df_pffScouting <- read_csv("Data/pffScoutingData.csv",
+                    col_types = cols())
+
+# tracking
+weeks <- seq(1:8)
+df_tracking <- data.frame()
+
+# iterating through all weeks
+for(w in weeks){
+    
+    df_tracking_temp <- read_csv(paste0("Data/week",w,".csv"),
+                                col_types = cols())
+    df_tracking <- bind_rows(df_tracking_temp, df_tracking)                            
+    
+}
+```
+
+```{r}
+# finding pass blockers and pass rushers
+positions <- df_pffScouting %>% select(c(nflId, pff_role)) %>% distinct(nflId, .keep_all = TRUE) %>% filter(pff_role %in% c("Pass Block", "Pass Rush"))
+
+# player weights
+weights <- df_players %>% select(c(nflId, weight))
+
+# max acceleration
+acceleration <- df_tracking %>% select(c(nflId, gameId, playId, frameId, a)) %>% group_by(nflId) %>% summarise(maxa = max(a)) %>% na.omit()
+```
+
+```{r}
+# all player max acceleration
+eda <- acceleration %>% left_join(weights, by = c("nflId"))
+
+# linemen max acceleration
+eda_position <- eda %>% inner_join(positions, by = c("nflId"))
+```
+
+```{r}
+# graphs
+
+# all players
+ggplot(data=eda, aes(x=weight, y=maxa, group=1)) +
+  geom_point() + ggtitle("Player Weight vs Max Accerlation (All Players)") + 
+  labs(x = "Weight (lb)", y = "Max Acceleration (yards/second^2)") +
+  geom_smooth(method='lm')
+
+# linemen
+ggplot(data=eda_position, aes(x=weight, y=maxa, color = pff_role)) +
+  geom_point() + ggtitle("Player Weight vs Max Accerlation (Linemen)") + 
+  labs(x = "Weight (lb)", y = "Max Acceleration (yards/second^2)") +
+  geom_smooth(method='lm')
+```
+
+
