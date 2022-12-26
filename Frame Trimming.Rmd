@@ -1,14 +1,11 @@
----
-title: "R Notebook"
-output: html_notebook
----
+
 ```{r}
 suppressMessages(suppressWarnings(library(tidyverse)))
 ```
 
 ```{r}
 # reading in pff
-df_pffScouting <- read_csv("pffScoutingData.csv",
+df_pffScouting <- read_csv("Data/pffScoutingData.csv",
                       col_types = cols())
 ```
 
@@ -16,11 +13,11 @@ df_pffScouting <- read_csv("pffScoutingData.csv",
 ```{r}
 # reading and trimming of tracking data
 
-weeks <- seq(1:2)
+weeks <- seq(1:8)
 for(w in weeks){
     
   # reading in the week  
-  df_tracking <- read_csv(paste0("week",w,".csv"),
+  df_tracking <- read_csv(paste0("Data/week",w,".csv"),
                                 col_types = cols())
   
   # flipping the positional values
