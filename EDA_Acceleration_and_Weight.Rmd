@@ -11,11 +11,11 @@ suppressMessages(suppressWarnings(library(tidyverse)))
 # reading in data
 
 # player
-df_players <- read_csv("Data/players.csv",
+df_players <- read_csv("players.csv",
                     col_types = cols())
 
 # pff
-df_pffScouting <- read_csv("Data/pffScoutingData.csv",
+df_pffScouting <- read_csv("pffScoutingData.csv",
                     col_types = cols())
 
 # tracking
@@ -25,7 +25,7 @@ df_tracking <- data.frame()
 # iterating through all weeks
 for(w in weeks){
     
-    df_tracking_temp <- read_csv(paste0("Data/week",w,".csv"),
+    df_tracking_temp <- read_csv(paste0("week",w,".csv"),
                                 col_types = cols())
     df_tracking <- bind_rows(df_tracking_temp, df_tracking)                            
     
