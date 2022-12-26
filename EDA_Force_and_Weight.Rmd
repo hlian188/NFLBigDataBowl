@@ -1,0 +1,77 @@
+---
+title: "R Notebook"
+---
+
+```{r}
+suppressMessages(suppressWarnings(library(tidyverse)))
+```
+
+
+```{r}
+# reading in data
+
+# forces
+df_forces <- suppressMessages((read_csv("Data/forces_week1.csv",
+                    col_types = cols())))
+# player
+df_players <- read_csv("Data/players.csv",
+                    col_types = cols())
+# pff
+df_pffScouting <- read_csv("Data/pffScoutingData.csv",
+                    col_types = cols())
+
+```
+
+```{r}
+# force vector
+df_interest <- df_forces %>% select(c(nflId, gameId, playId, frameId, force, weight)) %>% group_by(nflId) %>% summarise(max_force = max(force))
+
+# force in x direction
+df_interest_x <- df_forces %>% select(c(nflId, gameId, playId, frameId, x_force, weight)) %>% group_by(nflId) %>% summarise(max_xforce = max(x_force))
+
+# force in y direction
+df_interest_y <- df_forces %>% select(c(nflId, gameId, playId, frameId, y_force, weight)) %>% group_by(nflId) %>% summarise(max_yforce = max(y_force))
+
+# player weights
+weights <- df_players %>% select(c(nflId, weight))
+positions <- df_pffScouting %>% select(c(nflId, pff_role)) %>% distinct(nflId, .keep_all = TRUE) %>% filter(pff_role %in% c("Pass Block", "Pass Rush"))
+```
+
+```{r}
+# combining data frames together
+
+# force
+eda <- df_interest %>% left_join(weights, by = c("nflId"))
+eda <- eda %>% inner_join(positions, by = c("nflId"))
+
+# x direction force
+eda_x <- df_interest_x %>% left_join(weights, by = c("nflId"))
+eda_x <- eda_x %>% inner_join(positions, by = c("nflId"))
+
+# y direction force
+eda_y <- df_interest_y %>% left_join(weights, by = c("nflId"))
+eda_y <- eda_y %>% inner_join(positions, by = c("nflId"))
+```
+
+```{r}
+# graphs
+
+# force
+ggplot(data=eda, aes(x=weight, y=max_force, color = pff_role)) +
+  geom_point() + ggtitle("Player Weight vs Force") + 
+  labs(x = "Weight (lb)", y = "Max Force (yards/second^2)") + 
+  geom_smooth(method='lm')
+
+# x direction 
+ggplot(data=eda_x, aes(x=weight, y=max_xforce, color = pff_role)) +
+  geom_point() + ggtitle("Player Weight vs Force in Horizontal Direction") + 
+  labs(x = "Weight (lb)", y = "Max Force (yards/second^2)") + 
+  geom_smooth(method='lm')
+
+# y direction
+ggplot(data=eda_y, aes(x=weight, y=max_yforce, color = pff_role)) +
+  geom_point() + ggtitle("Player Weight vs Force in Vertical Direction") + 
+  labs(x = "Weight (lb)", y = "Max Force (yards/second^2)") + 
+  geom_smooth(method='lm')
+```
+
