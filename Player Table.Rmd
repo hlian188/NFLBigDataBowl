@@ -1,0 +1,68 @@
+
+```{r}
+suppressMessages(suppressWarnings(library(tidyverse)))
+suppressMessages(suppressWarnings(library(gt)))
+```
+
+```{r}
+# reading in data
+
+# pff
+df_pffScouting <- read_csv("pffScoutingData.csv",
+                      col_types = cols())
+# players
+df_players <- read_csv("players.csv",
+                    col_types = cols())
+df_players <- df_players %>% select(c(nflId, displayName))
+
+# force
+
+weeks <- seq(1:8)
+df_forces <- data.frame()
+
+#iterating through all weeks
+for(w in weeks){
+    df_forces_temp <- read_csv(paste0("forces_week",w,".csv"),
+                                col_types = cols())
+    df_forces <- bind_rows(df_forces_temp, df_forces)                            
+}
+```
+
+```{r}
+# times someone was credited with a bad outcome
+df_interest <- df_pffScouting %>% 
+  select(c(gameId, playId, nflId, pff_role, pff_hit, pff_hurry, pff_sack)) %>%
+  filter(pff_role %in% c("Pass Block", "Pass Rush")) %>% 
+  mutate(bad_outcome = pff_hurry + pff_sack + pff_hit) %>% 
+  filter(bad_outcome == 1)
+
+# finding total bad outcome per player
+df_player_outcomes <- df_interest %>% group_by(nflId) %>% summarise(credits = sum(bad_outcome))
+
+df_player_outcomes <- df_player_outcomes[order(-df_player_outcomes$credits),]
+
+# top players by credits
+df_top_players <- head(df_player_outcomes, 20)
+df_top_players <- df_top_players %>% 
+                  inner_join(df_players, by = c("nflId" = "nflId"))
+
+# max force for each pass rusher
+max_force <- df_forces %>% filter(pff_role == "Pass Rush") %>% group_by(nflId) %>% summarise(max_force = max(abs(force)))
+
+# combine with top players by credit
+df_top_players <- df_top_players %>% 
+                  inner_join(max_force, by = c("nflId" = "nflId")) %>% 
+                  select(-c(nflId))
+
+# formatting of the data frame
+colnames(df_top_players) <- c('Credits', 'Player', 'Max Force')
+df_top_players <- df_top_players[,c(2,1,3)]
+```
+
+```{r}
+# formatting of table
+table <- df_top_players %>% gt() %>% 
+  tab_header(title = "Top Defensive Linemen")
+table
+```
+
