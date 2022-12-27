@@ -5,7 +5,7 @@ suppressMessages(suppressWarnings(library(tidyverse)))
 
 ```{r}
 # reading in pff
-df_pffScouting <- read_csv("Data/pffScoutingData.csv",
+df_pffScouting <- read_csv("pffScoutingData.csv",
                       col_types = cols())
 ```
 
@@ -17,7 +17,7 @@ weeks <- seq(1:8)
 for(w in weeks){
     
   # reading in the week  
-  df_tracking <- read_csv(paste0("Data/week",w,".csv"),
+  df_tracking <- read_csv(paste0("week",w,".csv"),
                                 col_types = cols())
   
   # flipping the positional values
