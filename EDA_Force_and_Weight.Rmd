@@ -1,18 +1,22 @@
----
-title: "R Notebook"
----
 
 ```{r}
 suppressMessages(suppressWarnings(library(tidyverse)))
 ```
 
-
 ```{r}
 # reading in data
 
-# forces
-df_forces <- suppressMessages((read_csv("Data/forces_week1.csv",
-                    col_types = cols())))
+# force
+
+weeks <- seq(1:8)
+df_forces <- data.frame()
+
+#iterating through all weeks
+for(w in weeks){
+    df_forces_temp <- read_csv(paste0("Data/forces_week",w,".csv"),
+                                col_types = cols())
+    df_forces <- bind_rows(df_forces_temp, df_forces)                            
+}
 # player
 df_players <- read_csv("Data/players.csv",
                     col_types = cols())
