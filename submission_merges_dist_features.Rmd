@@ -1,0 +1,248 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+library(GGally)
+```
+
+
+
+# combining outcome variables
+```{r}
+plays = read.csv("plays.csv")
+pff = read.csv("pffScoutingData.csv")
+
+tracking = read.csv("week1_cut_by_frame_clean.csv")
+force = read.csv("forces_week1.csv")
+partitioned = read.csv("partitioned_forces1.csv")
+
+force_rush = force %>%
+        filter(pff_role == "Pass Rush")
+force_block = force %>%
+        filter(pff_role == "Pass Block")
+
+pff2 = pff %>% 
+  group_by(gameId, playId) %>% 
+  summarize(gameId = max(gameId, na.rm = TRUE),
+            hit = max(pff_hit, na.rm = TRUE), 
+            hurry = max(pff_hurry, na.rm = TRUE), 
+            sack = max(pff_sack,na.rm = TRUE))
+
+pff2$bad_thing = pmax(pff2$hit, pff2$hurry, pff2$sack)
+```
+
+```{r}
+tracking %>%
+  filter(gameId == 2021093000)
+plays
+```
+
+
+# shoelace area formula
+```{r}
+shoelace_area <- function(x_list, y_list){
+  a1 = 0
+  a2 = 0
+  append(x_list, x_list[0])
+  append(y_list, y_list[0])
+  
+  for (j in range(length(x_list)-1)){
+    a1 = a1 + x_list[j]*y_list[j+1]
+    a2 = a2 + y_list[j]*x_list[j+1]
+  }
+  l = abs(a1-a2)/2
+  return(l)
+}
+```
+
+
+
+# flipping field
+```{r}
+tracking2 <- tracking
+# done in frame trimming code
+
+linemen = merge(tracking2, pff, by = c("playId", "nflId"))
+linemen2 = linemen[,c("playId","frameId", "nflId",  "gameId.x", "time", "x", "y", "s", "a", "dis", "o", "dir", "pff_role", "pff_positionLinedUp")]
+```
+
+
+# pass rush distance feature calculations
+```{r}
+qb_temp = linemen2 %>%
+  mutate(qb_x = ifelse(pff_positionLinedUp == "QB", x, 0),
+         qb_y = ifelse(pff_positionLinedUp == "QB", y, 0))
+
+df_qb = qb_temp %>% 
+  group_by(gameId.x, playId, frameId) %>% 
+  summarize(qb_x = max(qb_x, na.rm = TRUE),
+            qb_y = max(qb_y, na.rm = TRUE)) %>%
+  ungroup()
+
+df_qb_merged = merge(linemen2, df_qb, by = c("gameId.x", "playId", "frameId"))
+
+df_dist = df_qb_merged %>%
+  filter(pff_role == "Pass Rush") %>%
+  group_by(gameId.x, playId, frameId) %>%
+  mutate(middleX = mean(x),
+         middleY = mean(y),
+         dist = ((middleX - x)**2 + (middleY - y)**2)**0.5, nflId = nflId)
+
+df_dist_qb = df_qb_merged %>%
+  filter(pff_role == "Pass Rush") %>%
+  group_by(gameId.x, playId, frameId) %>%
+  mutate(dist_to_qb = ((qb_x - x)**2 + (qb_y - y)**2)**0.5, nflId = nflId)
+
+
+df_area = df_qb_merged %>%
+  filter(pff_role == "Pass Rush") %>%
+  group_by(gameId.x, playId, frameId) %>%
+  summarise(area = shoelace_area(x,y), nflId = nflId)
+
+
+final0 = merge(df_dist, df_dist_qb, by = c("gameId.x", "playId","frameId", "nflId"))
+final = merge(final0, df_area, by = c("gameId.x", "playId","frameId", "nflId"))
+
+colnames(final)[1] = "gameId"
+
+
+final_w_force = merge(final, force_rush, by = c("gameId", "playId","frameId", "nflId"))
+
+final_w_force = final_w_force[,c("gameId","playId","frameId", "nflId",  "x.x", "y.x", "dist", "dist_to_qb", "area", "dir", "force", "x_force", "y_force", "pff_role")]
+
+#weighting forces
+final_w_force$inv_dist = 1/final_w_force$dist_to_qb
+
+final_w_force$count = 1
+
+weighted_forces = final_w_force %>%
+  group_by(gameId, playId, frameId) %>%
+  mutate(sum_inverse = sum(inv_dist),
+         tot_players = sum(count))
+
+#weighted_forces
+#weighted_forces[,-c("x.x", "dir",  "force", "inv_dist", "count", "sum_inverse", "tot_players")]
+
+weighted_forces$norm_weighted_x =  weighted_forces$x_force*(weighted_forces$inv_dist/weighted_forces$sum_inverse)*weighted_forces$tot_players
+weighted_forces$norm_weighted_y =  weighted_forces$y_force*(weighted_forces$inv_dist/weighted_forces$sum_inverse)*weighted_forces$tot_players
+
+weighted_forces = weighted_forces[,c("gameId", "playId",  "frameId", "nflId", "area", "dist", "dist_to_qb", "x_force", "y_force", "norm_weighted_x", "norm_weighted_y")]
+
+weighted_forces_rush = weighted_forces %>%
+  rename(area_rush = area,
+         dist_rush = dist,
+         dist_to_qb_rush = dist_to_qb,
+         x_force_rush = x_force,
+         y_force_rush = y_force,
+         norm_weighted_x_rush = norm_weighted_x,
+         norm_weighted_y_rush = norm_weighted_y)
+```
+
+
+# pass block distance feature calculations
+```{r}
+qb_temp = linemen2 %>%
+  mutate(qb_x = ifelse(pff_positionLinedUp == "QB", x, 0),
+         qb_y = ifelse(pff_positionLinedUp == "QB", y, 0))
+
+df_qb = qb_temp %>% 
+  group_by(gameId.x, playId, frameId) %>% 
+  summarize(qb_x = max(qb_x, na.rm = TRUE),
+            qb_y = max(qb_y, na.rm = TRUE)) %>%
+  ungroup()
+
+df_qb_merged = merge(linemen2, df_qb, by = c("gameId.x", "playId", "frameId"))
+
+df_dist = df_qb_merged %>%
+  filter(pff_role == "Pass Block") %>%
+  group_by(gameId.x, playId, frameId) %>%
+  mutate(middleX = mean(x),
+         middleY = mean(y),
+         dist = ((middleX - x)**2 + (middleY - y)**2)**0.5, nflId = nflId)
+
+df_dist_qb = df_qb_merged %>%
+  filter(pff_role == "Pass Block") %>%
+  group_by(gameId.x, playId, frameId) %>%
+  mutate(dist_to_qb = ((qb_x - x)**2 + (qb_y - y)**2)**0.5, nflId = nflId)
+
+
+df_area = df_qb_merged %>%
+  filter(pff_role == "Pass Block") %>%
+  group_by(gameId.x, playId, frameId) %>%
+  summarise(area = shoelace_area(x,y), nflId = nflId)
+
+
+final0 = merge(df_dist, df_dist_qb, by = c("gameId.x", "playId","frameId", "nflId"))
+final = merge(final0, df_area, by = c("gameId.x", "playId","frameId", "nflId"))
+
+colnames(final)[1] = "gameId"
+
+final_w_force = merge(final, force_block, by = c("gameId", "playId","frameId", "nflId"))
+
+final_w_force = final_w_force[,c("gameId","playId","frameId", "nflId",  "x.x", "y.x", "dist", "dist_to_qb", "area", "dir", "force", "x_force", "y_force", "pff_role")]
+
+#weighting forces
+final_w_force$inv_dist = 1/final_w_force$dist_to_qb
+
+final_w_force$count = 1
+
+weighted_forces = final_w_force %>%
+  group_by(gameId, playId, frameId) %>%
+  mutate(sum_inverse = sum(inv_dist),
+         tot_players = sum(count))
+
+#weighted_forces[,-c("x.x", "dir",  "force", "inv_dist", "count", "sum_inverse", "tot_players")]
+
+weighted_forces$norm_weighted_x =  weighted_forces$x_force*(weighted_forces$inv_dist/weighted_forces$sum_inverse)*weighted_forces$tot_players
+weighted_forces$norm_weighted_y =  weighted_forces$y_force*(weighted_forces$inv_dist/weighted_forces$sum_inverse)*weighted_forces$tot_players
+
+weighted_forces = weighted_forces[,c("gameId", "playId",  "frameId", "nflId", "area", "dist", "dist_to_qb", "x_force", "y_force", "norm_weighted_x", "norm_weighted_y")]
+
+
+weighted_forces_block = weighted_forces %>%
+  rename(area_block = area,
+         dist_block = dist,
+         dist_to_qb_block = dist_to_qb,
+         x_force_block = x_force,
+         y_force_block = y_force,
+         norm_weighted_x_block = norm_weighted_x,
+         norm_weighted_y_block = norm_weighted_y)
+```
+
+
+# finding averages across pass rushers and blockers of the same team 
+```{r}
+weighted_forces_rush_avg = weighted_forces_rush %>%
+  group_by(gameId, playId, frameId) %>%
+  summarise_at(vars(area_rush, dist_rush, dist_to_qb_rush, x_force_rush, y_force_rush, norm_weighted_x_rush, norm_weighted_y_rush), list(mean))
+
+weighted_forces_block_avg = weighted_forces_block %>%
+  group_by(gameId, playId, frameId) %>%
+  summarise_at(vars(area_block, dist_block, dist_to_qb_block, x_force_block, y_force_block, norm_weighted_x_block, norm_weighted_y_block), list(mean))
+```
+
+
+# merging with pass rushers with blockers along with response variables in pff data
+```{r}
+features_all = merge(weighted_forces_block_avg, weighted_forces_rush_avg, by = c("playId", "gameId", "frameId"))
+
+features_all2 = merge(features_all, partitioned, by = c("playId", "gameId", "frameId"))
+features_all2$norm_weighted_x_net = features_all2$norm_weighted_x_rush + features_all2$norm_weighted_x_block
+features_all2$norm_weighted_y_net = features_all2$norm_weighted_y_rush + features_all2$norm_weighted_y_block
+
+
+features_all3 = merge(features_all2, pff2, by = c("playId", "gameId"))
+features_all3
+```
+
+# writing to this week's df
+```{r}
+write.csv(features_all3,'features_all_1.csv')
+```
+
+
+
+
