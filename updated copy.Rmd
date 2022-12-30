@@ -1,8 +1,6 @@
 ---
 title: "R Notebook"
 output: html_notebook
-editor_options: 
-  chunk_output_type: inline
 ---
 
 ```{r}
@@ -33,15 +31,11 @@ shoelace_area <- function(x_list, y_list){
 
 # combining outcome variables
 ```{r}
-# library(reticulate)
-# plays = read.csv("plays.csv")
-# pff = read.csv("pffScoutingData.csv")
-# force = read.csv("week1_merged.csv")
-# require("reticulate")
-# source_python("pickle_reader.py")
-tracking <- read_pickle_file("week1_cleaned_pickle.pkl")
-#tracking = read.csv("week1_cut_by_frame_clean.csv")
-# partitioned = read.csv("partitioned_forces.csv")
+plays = read.csv("plays.csv")
+pff = read.csv("pffScoutingData.csv")
+force = read.csv("week1_merged.csv")
+tracking = read.csv("week1_cut_by_frame_clean.csv")
+partitioned = read.csv("partitioned_forces.csv")
 
 force_rush = force %>%
         filter(pff_role == "Pass Rush")
