@@ -1,12 +1,14 @@
 ---
 title: "R Notebook"
 output: html_notebook
+editor_options: 
+  chunk_output_type: inline
 ---
 
 ```{r}
 library(tidyverse)
 library(GGally)
-setwd("/Users/jingchunquan/desktop/Big_Data_Bowl/nfl-big-data-bowl-2023")
+setwd("C:/Users/Harrison/Documents/cmu2021-2022/36490/NFLBigDataBowl")
 ```
 
 
@@ -68,7 +70,7 @@ pff2 = pff %>%
 
 pff2$bad_thing = pmax(pff2$hit, pff2$hurry, pff2$sack)
 
-write.csv(pff2,'single_play.csv')
+# write.csv(pff2,'single_play.csv')
 ```
 
 
@@ -265,7 +267,7 @@ sd(final_w_force$dist_to_qb)
 
 
 ```{r}
-write.csv(final_w_force,'combined_per_player_rush.csv')
+# write.csv(final_w_force,'combined_per_player_rush.csv')
 
 ```
 
