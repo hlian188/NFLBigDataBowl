@@ -1,0 +1,426 @@
+---
+title: "R Notebook"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+# Loading in merged files and calculating net features
+```{r}
+library(tidyverse)
+setwd("/Users/jingchunquan/desktop/Big_Data_Bowl/nfl-big-data-bowl-2023")
+
+week1 = read_csv("features_all_1.csv")
+week2 = read_csv("features_all_2.csv")
+week3 = read_csv("features_all_3.csv")
+week4 = read_csv("features_all_4.csv")
+week5 = read_csv("features_all_5.csv")
+week6 = read_csv("features_all_6.csv")
+week7 = read_csv("features_all_7.csv")
+week8 = read_csv("features_all_8.csv")
+
+week1$week = 1
+week2$week = 2
+week3$week = 3
+week4$week = 4
+week5$week = 5
+week6$week = 6
+week7$week = 7
+week8$week = 8
+
+all2 = rbind(week1, week2, week3, week4, week5, week6, week7, week8)
+
+#all2$norm_weighted_x_net = all2$norm_weighted_x_rush + all2$norm_weighted_x_block
+#all2$norm_weighted_y_net = all2$norm_weighted_y_rush + all2$norm_weighted_y_block
+all2$area_net = all2$area_rush - all2$area_block
+all2$dist_net = all2$dist_rush - all2$dist_block
+all2$dist_to_qb_net = all2$dist_to_qb_rush - all2$dist_to_qb_block
+
+all2
+```
+
+# Setting NA values to be 0, since speeds of 0 would result in an NA force
+```{r}
+all2[is.na(all2)] = 0
+all2
+
+write.csv(all2, "features_all_weeks.csv")
+```
+
+
+# Merging df with plays data to get defensive and possession teams
+```{r}
+plays = read.csv("plays.csv")
+plays
+
+graphs = merge(all2, plays, by = c("gameId", "playId"))
+graphs
+```
+
+```{r}
+#install.packages("tidyverse", type = "binary")
+#install.packages("ggrepel", type = "binary")
+#install.packages("nflreadr", type = "binary")
+#install.packages("nflplotR", type = "binary")
+```
+
+```{r}
+library(tidyverse)
+library(ggrepel)
+library(nflreadr)
+library(nflplotR)
+```
+
+
+# Defensive team force vs bad outcome graph with team logos
+```{r}
+graphs2 = graphs %>%
+  group_by(gameId, playId) %>%
+  summarize(max_defense_force = min(net_x_force), bad_thing = max(bad_thing), defensiveTeam = defensiveTeam)
+
+graphs2 = graphs2 %>%
+  distinct()
+
+graphs2
+
+g = graphs2 %>%
+  group_by(defensiveTeam) %>%
+  summarize(max_defense_force_exerted = mean(max_defense_force), number_neg_outcome_inflicted = sum(bad_thing))
+
+
+ggplot(g, aes(x=max_defense_force_exerted, y=number_neg_outcome_inflicted)) +
+  geom_point() +
+  nflplotR::geom_nfl_logos(aes(team_abbr = defensiveTeam), width = 0.08, alpha = 0.8)+
+  ggplot2::labs(
+    x = "Average max defense force exerted",
+    y = "# hits/hurries/sacks inflicted",
+    caption = "net force < 0: defense exerted more force than offense",
+    title = "Defensive Teams' Max Force Exerted vs. Bad Outcomes Inflicted on QB "
+  ) +
+  ggplot2::theme_bw() +
+  ggplot2::theme(
+    plot.title = ggplot2::element_text(size = 12, hjust = 0.5, face = "bold")) +
+  geom_smooth(method = "lm", se = FALSE)
+
+
+```
+
+# Offensive team force vs bad outcome graph with team logos
+```{r}
+graphs2 = graphs %>%
+  group_by(playId, gameId) %>%
+  summarize(max_defense_force = max(net_x_force), bad_thing = max(bad_thing), possessionTeam = possessionTeam)
+
+graphs2 = graphs2 %>%
+  distinct()
+
+graphs2
+
+g = graphs2 %>%
+  group_by(possessionTeam) %>%
+  summarize(max_defense_force_allowed = mean(max_defense_force), number_neg_outcome_on_me = sum(bad_thing))
+
+
+ggplot(g, aes(x=max_defense_force_allowed, y=number_neg_outcome_on_me)) +
+  geom_point() +
+  nflplotR::geom_nfl_logos(aes(team_abbr = possessionTeam), width = 0.08, alpha = 0.8)+
+  ggplot2::labs(
+    x = "Average max defense force allowed",
+    y = "# hits/hurries/sacks suffered",
+    caption = "net force < 0: defense exerted more force than offense",
+    title = "Offensive Teams' Max Force Allowed on Linemen vs. Bad Outcomes on its QB"
+  ) +
+  ggplot2::theme_bw() +
+  ggplot2::theme(
+    plot.title = ggplot2::element_text(size = 12, hjust = 0.5, face = "bold")
+  ) +
+  geom_smooth(method = "lm", se = FALSE)
+```
+
+# Making PCA plot with all features
+```{r}
+library(factoextra)
+
+all = all2 %>%
+  dplyr::select(-c(X1, playId, gameId, hit, hurry, sack))
+
+all <- all[complete.cases(all),]
+
+quant = all %>%
+  scale(center = FALSE, scale = apply(., 2, sd, na.rm = TRUE))
+
+
+pca = prcomp(quant, center = TRUE, scale. = TRUE)
+summary(pca)
+```
+
+
+# Elbow plot for PCA
+```{r}
+fviz_eig(pca, addlabels = TRUE) + 
+  geom_hline(yintercept = 100 * (1/ncol(quant)), 
+             linetype = "dashed", color = "darkviolet")
+```
+
+
+
+# Biplot illustration of PCA
+```{r}
+all$frame = ifelse(all$frameId >= 25, "50+", "frame")
+all$frame = ifelse(all$frameId < 25, "<25", all$frame)
+
+fviz_pca_biplot(pca, label = "var",
+                alpha.ind = 0,
+                alpha.var = 0.75,
+                repel = TRUE)
+```
+
+
+
+
+# Making PCA with selected force and distance features
+```{r}
+all = all2 %>%
+  dplyr::select(c(frameId, norm_weighted_x_net, area_net, dist_net, dist_to_qb_net, net_x_force_middle, net_x_force_top, net_x_force_bottom))
+
+all <- all[complete.cases(all),]
+
+quant = all %>%
+  scale(center = FALSE, scale = apply(., 2, sd, na.rm = TRUE))
+
+
+pca = prcomp(quant, center = TRUE, scale. = TRUE)
+summary(pca)
+
+fviz_eig(pca, addlabels = TRUE) + 
+  geom_hline(yintercept = 100 * (1/ncol(quant)), 
+             linetype = "dashed", color = "darkviolet")
+
+```
+
+
+# Converting frameId into categorical variable to color datapoints of biplot
+```{r}
+all$frame = ifelse(all$frameId >= 60, "60+", "frame")
+all$frame = ifelse(all$frameId < 60, "40-60", all$frame)
+all$frame = ifelse(all$frameId < 40, "30-40", all$frame)
+all$frame = ifelse(all$frameId < 30, "20-30", all$frame)
+all$frame = ifelse(all$frameId < 20, "10-20", all$frame)
+all$frame = ifelse(all$frameId < 10, "<10", all$frame)
+
+fviz_pca_biplot(pca, label = "var",
+                alpha.ind = 0.25,
+                alpha.var = 0.75,
+                repel = TRUE,
+                habillage = all$frame, 
+                col.var = "black",
+                palette = "Blues",
+                pointshape = 19)
+```
+
+
+# Over time probabilities of bad outcome
+```{r}
+mod = lm(bad_thing ~ . -hit - hurry - sack - playId - gameId - X, data = all2)
+summary(mod)
+
+all2$p = predict(mod, all2, type="response")
+
+mod2 = lm(bad_thing ~ frameId + area_block + dist_block + dist_to_qb_block + area_rush + dist_rush + dist_to_qb_rush + area_net + dist_net + dist_to_qb_net, data = all2)
+summary(mod)
+
+all2$p2 = predict(mod2, all2, type="response")
+
+  
+over_time = all2 %>%
+  group_by(frameId) %>%
+  summarize(prob = mean(p, na.rm=TRUE))
+
+over_time = filter(over_time, frameId < 200)
+
+plot(over_time$prob, 
+     xlab = "frameId",
+     ylab = "probability of hit/hurry/sack")
+
+abline(v = 60, col = "blue")
+```
+
+
+
+```{r}
+all2$bad_pred = ifelse(all2$p > 0.5, 1, 0)
+all2$bad_pred2 = ifelse(all2$p2 > 0.5, 1, 0)
+all2$correct = ifelse(all2$bad_pred == all2$bad_thing, 1, 0)
+
+1-sum(abs(all2$bad_pred - all2$bad_thing))/nrow(all2)
+
+cor = all2 %>%
+  filter(correct == 1) 
+
+wrong = all2 %>%
+  filter(correct == 0) 
+
+
+barplot(table(cor$frameId))
+barplot(table(wrong$frameId))
+
+group_all = all2 %>%
+  group_by(frameId) %>%
+  mutate(accuracy = 1- sum(abs(bad_pred - bad_thing))/n(),
+         sd = sd(p),
+         accuracy2 = 1- sum(abs(bad_pred2 - bad_thing))/n(),
+         sd2 = sd(p2))
+
+```
+
+
+```{r}
+group_all$lower = group_all$accuracy - group_all$sd
+group_all$upper = group_all$accuracy + group_all$sd
+
+group_all$lower2 = group_all$accuracy2 - group_all$sd2
+group_all$upper2 = group_all$accuracy2 + group_all$sd2
+group_all
+```
+
+# Including xgboost model in addition to logistic model
+```{r}
+all2 = read_csv("stuff_for_jing.csv")
+
+colnames(all2)[3] = "p"
+all2
+```
+
+```{r}
+all2$bad_pred = ifelse(all2$p > 0.5, 1, 0)
+all2$correct = ifelse(all2$bad_pred == all2$bad_thing, 1, 0)
+
+1-sum(abs(all2$bad_pred - all2$bad_thing))/nrow(all2)
+
+cor = all2 %>%
+  filter(correct == 1) 
+
+wrong = all2 %>%
+  filter(correct == 0) 
+
+
+barplot(table(cor$frameId))
+barplot(table(wrong$frameId))
+
+group_all = all2 %>%
+  group_by(frameId) %>%
+  mutate(accuracy = 1- sum(abs(bad_pred - bad_thing))/n(),
+         sd = sd(p))
+
+```
+
+
+# Baseline Model Performance by FrameId
+```{r}
+group_all = filter(group_all, frameId < 60)
+
+ggplot(data=group_all) +
+  ggtitle("Baseline Model Performance by FrameId") +
+  geom_line(aes(x=frameId, y=accuracy2))+
+  geom_ribbon(aes(ymin=lower2, ymax=upper2, x=frameId, fill = "band"), alpha = 0.3, fill = "red")+
+  #geom_line(aes(x=frameId, y=accuracy2))+
+  #geom_ribbon(aes(ymin=lower2, ymax=upper2, x=frameId, fill = "band"), alpha = 0.3, fill = "blue")+
+  theme_minimal() + 
+  scale_y_continuous(limits = c(0, 1))
+  
+
+```
+
+
+
+```{r}
+fit1 <- lm(accuracy ~ frameId, data = group_all)
+summary(fit1)
+
+library(ggplot2)
+
+ggplot(group_all, aes(x = frameId, y = accuracy)) + 
+  geom_point() +
+  stat_smooth(method = "lm", col = "red")
+```
+
+
+
+# EDA: Distribution of frameIds
+```{r}
+p = ecdf(all2$frameId)
+#plot CDF
+plot(p, xlab='frameId', ylab='CDF', main='CDF of Frames') 
+abline(v = 60, col = "blue")
+
+p = ecdf(all2$p)
+#plot CDF
+plot(p, xlab='frameId', ylab='CDF', main='CDF of Frames') 
+```
+
+# Rpart classification tree
+```{r}
+library(rpart)
+library(rpart.plot)
+
+model3 = rpart(bad_thing ~ frameId + norm_weighted_x_net + area_net + dist_net + dist_to_qb_net, data = all2)
+all2$p3 <- predict(model3, newdata = all2)
+
+all2$bad_pred_p3 = ifelse(all2$p3 > 0.5, 1, 0)
+sum(abs(all2$bad_pred_p3 - all2$bad_thing))/nrow(all2)
+```
+
+
+# Leave one week out cross validation of predictive accuracies on 3 preliminary models 
+```{r}
+library(rpart)
+library(rpart.plot)
+
+ans = matrix(nrow = 3, ncol = 8)
+rownames(ans) = c('GLM1', 'GLM2', 'Tree')
+
+
+for (k in 1:8){
+  testd <- all2 %>% filter(week == k)
+  traind <- all2 %>% filter(week != k)
+  
+  model1 = glm(bad_thing ~ 1, family = "binomial", data = traind)
+  
+  model2 = glm(bad_thing ~ frameId + area_block + dist_block + dist_to_qb_net + x_force_block + y_force_block + norm_weighted_x_block + norm_weighted_y_block + area_rush + dist_rush + dist_to_qb_rush + x_force_rush + y_force_rush + norm_weighted_x_rush + norm_weighted_y_rush, family = "binomial", data = traind)
+  
+  model3 = rpart(bad_thing ~ frameId + norm_weighted_x_net + area_net + dist_net + dist_to_qb_net +
+                   net_x_force_bottom + net_y_force_bottom + net_x_force_top + net_y_force_top + 
+                 net_x_force_middle + net_y_force_middle, data = traind)
+  
+
+  
+  testd$p1 <- predict(model1, newdata = testd, type="response")
+  testd$p2 <- predict(model2, newdata = testd, type="response")
+  testd$p3 <- predict(model3, newdata = testd)
+  
+  testd$bad_pred_p1 = ifelse(testd$p1 > 0.5, 1, 0)
+  testd$bad_pred_p2 = ifelse(testd$p2 > 0.5, 1, 0)
+  testd$bad_pred_p3 = ifelse(testd$p3 > 0.5, 1, 0)
+  
+  ans[1,k] = 1-sum(abs(testd$bad_pred_p1 - testd$bad_thing))/nrow(testd)
+  ans[2,k] = 1-sum(abs(testd$bad_pred_p2 - testd$bad_thing))/nrow(testd)
+  ans[3,k] = 1-sum(abs(testd$bad_pred_p3 - testd$bad_thing))/nrow(testd)
+}
+
+ans
+mat2 = matrix(nrow = 3, ncol = 2)
+rownames(mat2) = c('GLM1', 'GLM2', 'Tree')
+colnames(mat2) = c('accuracy', 'standard errors')
+
+mat2[1,1] = mean(ans[1,])
+mat2[2,1] = mean(ans[2,])
+mat2[3,1] = mean(ans[3,])
+
+mat2[1,2] = sd(ans[1,])/8**0.5
+mat2[2,2] = sd(ans[2,])/8**0.5
+mat2[3,2] = sd(ans[3,])/8**0.5
+
+mat2
+```
+

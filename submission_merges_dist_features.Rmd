@@ -6,8 +6,6 @@ output: html_notebook
 ```{r}
 library(tidyverse)
 library(GGally)
-setwd("/Users/jingchunquan/desktop/Big_Data_Bowl/nfl-big-data-bowl-2023")
-
 ```
 
 
@@ -17,10 +15,9 @@ setwd("/Users/jingchunquan/desktop/Big_Data_Bowl/nfl-big-data-bowl-2023")
 plays = read.csv("plays.csv")
 pff = read.csv("pffScoutingData.csv")
 
-
-tracking = read.csv("week8_cut_by_frame_clean.csv")
-force = read.csv("raw_forces_week8.csv")
-partitioned = read.csv("partitioned_forces8.csv")
+tracking = read.csv("week1_cut_by_frame_clean.csv")
+force = read.csv("forces_week1.csv")
+partitioned = read.csv("partitioned_forces1.csv")
 
 force_rush = force %>%
         filter(pff_role == "Pass Rush")
@@ -37,8 +34,14 @@ pff2 = pff %>%
 pff2$bad_thing = pmax(pff2$hit, pff2$hurry, pff2$sack)
 ```
 
+```{r}
+tracking %>%
+  filter(gameId == 2021093000)
+plays
+```
 
-# shoelace area stuff
+
+# shoelace area formula
 ```{r}
 shoelace_area <- function(x_list, y_list){
   a1 = 0
@@ -59,16 +62,15 @@ shoelace_area <- function(x_list, y_list){
 
 # flipping field
 ```{r}
-tracking2 <- tracking %>%
-  mutate(x = ifelse(playDirection == "left", 120-x, x),
-         y = ifelse(playDirection == "left", 160/3 - y, y))
+tracking2 <- tracking
+# done in frame trimming code
 
 linemen = merge(tracking2, pff, by = c("playId", "nflId"))
 linemen2 = linemen[,c("playId","frameId", "nflId",  "gameId.x", "time", "x", "y", "s", "a", "dis", "o", "dir", "pff_role", "pff_positionLinedUp")]
 ```
 
 
-# pass rush
+# pass rush distance feature calculations
 ```{r}
 qb_temp = linemen2 %>%
   mutate(qb_x = ifelse(pff_positionLinedUp == "QB", x, 0),
@@ -140,7 +142,7 @@ weighted_forces_rush = weighted_forces %>%
 ```
 
 
-# pass block
+# pass block distance feature calculations
 ```{r}
 qb_temp = linemen2 %>%
   mutate(qb_x = ifelse(pff_positionLinedUp == "QB", x, 0),
@@ -211,7 +213,7 @@ weighted_forces_block = weighted_forces %>%
 ```
 
 
-
+# finding averages across pass rushers and blockers of the same team 
 ```{r}
 weighted_forces_rush_avg = weighted_forces_rush %>%
   group_by(gameId, playId, frameId) %>%
@@ -223,18 +225,22 @@ weighted_forces_block_avg = weighted_forces_block %>%
 ```
 
 
+# merging with pass rushers with blockers along with response variables in pff data
 ```{r}
 features_all = merge(weighted_forces_block_avg, weighted_forces_rush_avg, by = c("playId", "gameId", "frameId"))
 
 features_all2 = merge(features_all, partitioned, by = c("playId", "gameId", "frameId"))
+features_all2$norm_weighted_x_net = features_all2$norm_weighted_x_rush + features_all2$norm_weighted_x_block
+features_all2$norm_weighted_y_net = features_all2$norm_weighted_y_rush + features_all2$norm_weighted_y_block
+
 
 features_all3 = merge(features_all2, pff2, by = c("playId", "gameId"))
 features_all3
 ```
 
+# writing to this week's df
 ```{r}
-
-write.csv(features_all3,'features_all_8.csv')
+write.csv(features_all3,'features_all_1.csv')
 ```
 
 
