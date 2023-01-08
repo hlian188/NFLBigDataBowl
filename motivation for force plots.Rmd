@@ -1,0 +1,145 @@
+
+```{r}
+suppressMessages(suppressWarnings(library(tidyverse)))
+suppressMessages(suppressWarnings(library(cowplot)))
+```
+
+```{r}
+# reading in data
+
+# player
+df_players <- read_csv("Data/players.csv",
+                    col_types = cols())
+
+# pff
+df_pffScouting <- read_csv("Data/pffScoutingData.csv",
+                    col_types = cols())
+
+# tracking
+weeks <- seq(1:8)
+df_tracking <- data.frame()
+
+for(w in weeks){
+    
+    df_tracking_temp <- read_csv(paste0("Data/week",w,".csv"),
+                                col_types = cols())
+    df_tracking <- bind_rows(df_tracking_temp, df_tracking)                            
+    
+}
+
+# force
+weeks <- seq(1:8)
+df_forces <- data.frame()
+
+for(w in weeks){
+    df_forces_temp <- read_csv(paste0("Data/forces_week",w,".csv"),
+                                col_types = cols())
+    df_forces <- bind_rows(df_forces_temp, df_forces)                            
+}
+```
+
+```{r}
+# creating a data frame of weight and max acceleration for each linemen
+
+# finding pass blockers and pass rushers
+positions <- df_pffScouting %>% select(c(nflId, pff_role)) %>% 
+              distinct(nflId, .keep_all = TRUE) %>% 
+              filter(pff_role %in% c("Pass Block", "Pass Rush"))
+
+# player weights
+weights <- df_players %>% select(c(nflId, weight))
+
+# max acceleration
+acceleration <- df_tracking %>% select(c(nflId, gameId, playId, frameId, a)) %>% 
+                group_by(nflId) %>% 
+                summarise(maxa = max(a)) %>% 
+                na.omit()
+
+# joining the data frame of linemen, weights, and acceleration together
+eda_acceleration <- acceleration %>% left_join(weights, by = c("nflId"))
+
+eda_acceleration <- eda_acceleration %>% inner_join(positions, by = c("nflId"))
+```
+
+```{r}
+# creating a data frame of weight and max force for each linemen
+
+# force vector
+force <- df_forces %>% select(c(nflId, gameId, playId, frameId, force, weight)) %>% group_by(nflId) %>% summarise(max_force = max(force)) %>% na.omit
+
+# force in x direction
+force_x <- df_forces %>% select(c(nflId, gameId, playId, frameId, x_force, weight)) %>% group_by(nflId) %>% summarise(max_xforce = max(x_force))
+
+# force in y direction
+force_y <- df_forces %>% select(c(nflId, gameId, playId, frameId, y_force, weight)) %>% group_by(nflId) %>% summarise(max_yforce = max(y_force))
+
+# combining data frames together
+
+# force
+eda_force <- force %>% left_join(weights, by = c("nflId"))
+eda_force <- eda_force %>% inner_join(positions, by = c("nflId"))
+
+# x direction force
+eda_x <- force_x %>% left_join(weights, by = c("nflId"))
+eda_x <- eda_x %>% inner_join(positions, by = c("nflId"))
+
+# y direction force
+eda_y <- force_y %>% left_join(weights, by = c("nflId"))
+eda_y <- eda_y %>% inner_join(positions, by = c("nflId"))
+
+```
+
+```{r}
+# weight vs max acceleration graph
+weight_acceleration <- ggplot(data=eda_acceleration, aes(x=weight, y=maxa, 
+                                                     color = pff_role)) +
+                        geom_point() + 
+                        ggtitle("Player Weight vs Max Acceleration (Linemen)") + 
+                        labs(x = "Weight (lb)", 
+                             y = "Max Acceleration (yards/second^2)", 
+                             color='Linemen Role') +
+                        geom_smooth(method='lm') + 
+                        theme_bw() + 
+                        theme(plot.title = element_text(hjust = 0.5))
+
+# weight vs force
+# force
+weight_force <- ggplot(data=eda_force, aes(x=weight, y=max_force, color = pff_role)) +
+                geom_point() + ggtitle("Player Weight vs Force") + 
+                labs(x = "Weight (lb)", y = "Max Force (yards/second^2)", 
+                     color='Linemen Role') + 
+                geom_smooth(method='lm') + 
+                        theme_bw() + 
+                        theme(plot.title = element_text(hjust = 0.5))
+
+# x direction 
+weight_force_x <- ggplot(data=eda_x, aes(x=weight, y=max_xforce, color = pff_role)) +
+                  geom_point() + 
+                  ggtitle("Player Weight vs Force in Horizontal Direction") + 
+                  labs(x = "Weight (lb)", y = "Max Force (yards/second^2)", 
+                       color='Linemen Role') + 
+                  geom_smooth(method='lm') + 
+                        theme_bw() + 
+                        theme(plot.title = element_text(hjust = 0.5))
+
+# y direction
+weight_force_y <-ggplot(data=eda_y, aes(x=weight, y=max_yforce, color = pff_role)) +
+                        geom_point() + 
+                        ggtitle("Player Weight vs Force in Vertical Direction") + 
+                        labs(x = "Weight (lb)", y = "Max Force (yards/second^2)", 
+                             color='Linemen Role') + 
+                        geom_smooth(method='lm') + 
+                        theme_bw() + 
+                        theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+```{r}
+graphs <- plot_grid(weight_acceleration, weight_force_x,
+          ncol = 2, align = "v")
+
+png(filename="force_motivation_plots.png", width=1405, height=574)
+graphs
+dev.off()
+```
+

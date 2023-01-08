@@ -1,0 +1,173 @@
+```{r}
+suppressMessages(suppressWarnings(library(tidyverse)))
+suppressMessages(suppressWarnings(library(gganimate)))
+suppressMessages(suppressWarnings(library(cowplot)))
+suppressMessages(suppressWarnings(library(repr)))
+suppressMessages(suppressWarnings(library(gifski)))
+
+#turning off warnings
+options(warn=-1)
+```
+
+```{r}
+# reading in data
+
+#game
+df_games <- read_csv("Data/games.csv",
+                    col_types = cols())
+
+#play
+df_plays <- read_csv("Data/plays.csv",
+                    col_types = cols())
+
+# pff
+df_pffScouting <- read_csv("Data/pffScoutingData.csv",
+                      col_types = cols())
+
+# tracking
+df_tracking <- read_csv("week5_cut_by_frame_clean.csv",
+                    col_types = cols())
+
+```
+
+```{r}
+#filtering and processing of data
+
+# sample game and play
+the_game = 2021100700
+the_play = 2051
+
+# filtering for the sample game and play
+df_data <- df_tracking %>% filter(gameId == the_game, playId == the_play)
+df_linemen <- df_pffScouting %>% filter(gameId == the_game, playId == the_play)
+
+# filter tracking so that it only has the right players
+df_data <- df_data %>% left_join(df_linemen, by = c("nflId" = "nflId")) %>% 
+            filter(team == "football" | pff_role == "Pass" | 
+                    pff_role == "Pass Rush" | pff_role == "Pass Block")
+
+# selects gameId, playId, and description
+example_play <- df_plays %>%
+                select(gameId, playId, playDescription) %>% 
+                filter(gameId == the_game, playId == the_play) 
+
+#selects game details
+example_play <- inner_join(example_play, df_games,
+                           by = c("gameId" = "gameId"))
+
+#merging tracking data to play
+example_play <- merge(example_play, df_data)
+
+frame_1 <- example_play %>%  filter(frameId == "1") %>% 
+            filter(pff_role == "Pass Block")
+# example_play <- example_play %>%  filter(frameId == "1")
+```
+
+
+```{r}
+# animation bounds
+
+# use the Lopez code:
+# field boundaries
+xmin <- 0
+xmax <- 160/3
+hash_right <- 38.35
+hash_left <- 12
+hash_width <- 3.3
+
+# segment lines
+top_line = max(frame_1$y)
+bottom_line = min(frame_1$y)
+
+# boundaries for a given play
+ymin <- 0
+ymax <- 120
+df_hash <- expand.grid(x = c(0, 23.36667, 29.96667, xmax), y = (10:110))
+df_hash <- df_hash %>% filter(!(floor(y %% 5) == 0))
+df_hash <- df_hash %>% filter(y < ymax, y > ymin)
+line_of_scrimmage <- df_plays %>% filter(gameId == the_game, playId == the_play) %>% select(yardlineNumber)
+line_of_scrimmage <- line_of_scrimmage$yardlineNumber + 10
+
+```
+
+```{r}
+# creating the plot:
+segment_plot <- ggplot() +
+  
+  #green base field
+  annotate("rect", xmin = 40, xmax = 80, ymin = 0, ymax = 160/3, alpha = 0.4,
+           color = "gray", fill = "darkgreen") +
+  
+  #hash marks
+  annotate("text", y = df_hash$x[df_hash$x < 55/2], size = 8, alpha = 0.75, color = "white",
+           x = df_hash$y[df_hash$x < 55/2], label = "|", vjust = -0.3, hjust = 0.4) +
+  annotate("text", y = df_hash$x[df_hash$x > 55/2], size = 8, alpha = 0.75, color = "white",
+           x = df_hash$y[df_hash$x > 55/2], label = "|", vjust = 1, hjust = 0.4) +
+  
+  #yard lines
+  annotate("segment", y = xmin,
+           x = seq(max(10, ymin), min(ymax, 110), by = 5),
+           yend =  xmax, color = "white",
+           xend = seq(max(10, ymin), min(ymax, 110), by = 5), size = .75, alpha = 0.75) +
+  
+  #yard numbers
+  annotate("text", y = rep(hash_left, 11), x = seq(10, 110, by = 10), alpha = 0.75,
+           label = c("   G", seq(10, 50, by = 10), rev(seq(10, 40, by = 10)), "G   "),
+           angle = 0, size = 8, color = "white") +
+  annotate("text", y = rep((xmax - hash_left), 11), x = seq(10, 110, by = 10),
+           label = c("G   ", seq(10, 50, by = 10), rev(seq(10, 40, by = 10)), "   G"),
+           angle = 180, size = 8, alpha = 0.75, color = "white") +
+  
+  # bounds
+  annotate("segment", y = c(xmin, xmin, xmax, xmax),
+           x = c(ymin, ymax, ymax, ymin),
+           yend = c(xmin, xmax, xmax, xmin),
+           xend = c(ymax, ymax, ymin, ymin), colour = "white", alpha = 0.25) +
+  
+  # line of scrimmage
+  annotate("segment", y = xmin, yend = xmax,
+           x = line_of_scrimmage,
+           xend = line_of_scrimmage,
+           color = "gold", size = 2.5) +
+  
+  #adding players
+  geom_point(data = example_play,
+             aes(x = x, y = y, shape = team, fill = team, group = nflId, 
+                 size = team, color = team), alpha = .8) + 
+  
+  # force segments
+  geom_segment(aes(x = 40, y = top_line, xend = 80, yend = top_line), size = 1.5) + 
+  geom_segment(aes(x = 40, y = bottom_line, xend = 80, yend = bottom_line), size = 1.5) + 
+  
+  # labels
+  annotate(geom="label",x=30, y=11.71,label="x_force_bot_o", fill="#69BE28", col = "white", size = 3) +
+  annotate(geom="label",x=30, y=26.545,label="x_force_mid_o", fill="#69BE28", col = "white", size = 3) +
+  annotate(geom="label",x=30, y=41.5,label="x_force_top_o", fill="#69BE28", col = "white", size = 3) +
+  annotate(geom="label",x=90, y=11.71,label="x_force_bot_d", fill="#003594", col = "white", size = 3) +
+  annotate(geom="label",x=90, y=26.545,label="x_force_mid_d", fill="#003594", col = "white", size = 3) +
+  annotate(geom="label",x=90, y=41.5,label="x_force_top_d", fill="#003594", col = "white", size = 3) +
+  
+  
+  # size and color parameters
+  scale_size_manual(values = c(8, 8, 8), guide = "none") + 
+  scale_shape_manual(values = c("football" = 16, "SEA" = 21, "LA" = 21), guide = "none") +
+  scale_fill_manual(values = c("football" = "#663300", "SEA" = "#69BE28", "LA" = "#003594"), 
+                    guide = "none") + 
+  scale_colour_manual(values = c("football" = "#663300", "SEA" = "black", "LA" = "black"), 
+                      guide = "none") +
+  ylim(xmin, xmax) + 
+  coord_fixed() + 
+  
+  #applying theme
+  theme_nothing() + 
+  theme(plot.title = element_text(), plot.margin=grid::unit(c(0,0,0,0), "mm")) +
+  
+  #setting animation parameters
+  transition_time(frameId)  +
+  ease_aes('linear')
+
+segment_plot
+
+animate(segment_plot, height = 1440, width = 1440)
+
+```
